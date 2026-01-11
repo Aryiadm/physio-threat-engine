@@ -1,4 +1,4 @@
-# Physio Threat Intelligence Engine
+# SignalZero: Physio Threat Intelligence Engine
 
 ## Zero-Trust Health Data Pipeline • AI-Driven Signal Integrity & Anomaly Detection
 
