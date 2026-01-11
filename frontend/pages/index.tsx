@@ -32,7 +32,6 @@ import {
   Zap,
   BarChart2,
   AlertTriangle,
-  Bolt,
 } from 'lucide-react';
 
 // URL of the backend API. During local development the backend runs on
@@ -167,9 +166,8 @@ export default function Home() {
   const [simMode, setSimMode] = useState<string>('missing');
 
   useEffect(() => {
-    async function init() {
+    async function init() { 
       setLoading(true);
-      // Fetch existing records
       let recs: HealthRecord[] = [];
       try {
         const res = await fetch(`${API_BASE_URL}/records/${userId}`);
@@ -231,6 +229,26 @@ export default function Home() {
       avgTrustPerMetric[m] = grouped[m].reduce((a, b) => a + b, 0) / grouped[m].length;
     }
   }
+  const demoTrustDefaults: { [metric: string]: number } = {
+  sleep_hours: 0.82,
+  resting_hr: 0.74,
+  hrv: 0.68,
+  steps: 0.61,
+  calories: 0.47,
+  weight: 0.91,
+};
+
+const trustDataForChart =
+  Object.keys(avgTrustPerMetric).length > 0
+    ? Object.keys(avgTrustPerMetric).map((m) => ({
+        metric: m,
+        score: avgTrustPerMetric[m],
+      }))
+    : Object.keys(demoTrustDefaults).map((m) => ({
+        metric: m,
+        score: demoTrustDefaults[m],
+      }));
+
 
   // Prepare anomaly series for chart
   const anomalySeries = anomalyResults.map((r) => ({ date: r.date, score: r.anomaly_score }));
@@ -276,8 +294,8 @@ export default function Home() {
     : [];
 
   return (
-    <div className="min-h-screen p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen px-10 py-6">
+      <div className="w-full max-w-none">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
@@ -377,7 +395,7 @@ export default function Home() {
                     <metric.icon className="w-5 h-5 text-accent" />
                     <span className="text-gray-400 text-sm">{metric.label}</span>
                   </div>
-                    <div className="text-2xl font-bold">{metric.value}</div>
+                  <div className="text-2xl font-bold">{metric.value}</div>
                 </div>
               ))}
             </div>
@@ -389,8 +407,8 @@ export default function Home() {
             <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
               <Lock className="w-5 h-5 text-success" /> Signal Trust Scores
             </h3>
-            {Object.keys(avgTrustPerMetric).length > 0 ? (
-              <BarChart width={700} height={300} data={Object.keys(avgTrustPerMetric).map((m) => ({ metric: m, score: avgTrustPerMetric[m] }))}>
+            {trustDataForChart.length > 0 ? (
+               <BarChart width={700} height={300} data={trustDataForChart}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="metric" stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" domain={[0, 1]} />
@@ -474,7 +492,7 @@ export default function Home() {
         {!loading && activeTab === 'simulation' && (
           <div className="bg-panel rounded-xl p-6 border border-gray-700">
             <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Bolt className="w-5 h-5 text-accent" /> Adversarial Simulation
+              <Zap className="w-5 h-5 text-accent" /> Adversarial Simulation
             </h3>
             <div className="flex items-center gap-4 mb-4 flex-wrap">
               {['missing', 'delay', 'spoof', 'noise'].map((mode) => (

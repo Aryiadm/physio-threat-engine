@@ -10,17 +10,19 @@ network security systems.
 
 from __future__ import annotations
 
+from typing import List
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 
-# Import sibling modules directly.  When running this file via uvicorn
-# from within the backend directory, Python adds the current directory to
-# sys.path so these imports will resolve correctly.
-import db  # noqa: E402
-import schemas  # noqa: E402
-import model  # noqa: E402
+try:
+    from . import db, schemas, model
+except ImportError:  # pragma: no cover - fallback for running from backend/
+    import db  # type: ignore  # noqa: E402
+    import schemas  # type: ignore  # noqa: E402
+    import model  # type: ignore  # noqa: E402
 
 app = FastAPI(title="Physiological Threat Intelligence Engine", version="0.1.0")
 
