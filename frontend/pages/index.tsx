@@ -12,6 +12,7 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
+  ResponsiveContainer,
   LineChart,
   Line,
   BarChart,
@@ -37,7 +38,13 @@ import {
 // URL of the backend API. During local development the backend runs on
 // http://localhost:8000. Adjust this constant if you deploy the API
 // elsewhere or behind a proxy.
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL =
+  typeof window !== 'undefined'
+    ? process.env.NEXT_PUBLIC_API_BASE_URL
+    : undefined;
+
+const DEMO_MODE = !API_BASE_URL;
+
 
 // Define TypeScript interfaces matching the backend schemas
 interface HealthRecord {
@@ -134,6 +141,84 @@ function generateHealthData(days: number = 30): HealthRecord[] {
   return data;
 }
 
+function computeCorrelation(xs: number[], ys: number[]): number {
+  if (xs.length !== ys.length || xs.length < 2) return 0;
+  const n = xs.length;
+  const meanX = xs.reduce((a, b) => a + b, 0) / n;
+  const meanY = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0;
+  let denomX = 0;
+  let denomY = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - meanX;
+    const dy = ys[i] - meanY;
+    num += dx * dy;
+    denomX += dx * dx;
+    denomY += dy * dy;
+  }
+  const denom = Math.sqrt(denomX * denomY);
+  if (!denom) return 0;
+  return num / denom;
+}
+
+function buildDemoAnomalies(records: HealthRecord[]): AnomalyResult[] {
+  return records
+    .slice(-14)
+    .map((rec) => {
+      const energy = rec.energy ?? 0;
+      const sleep = rec.sleep_hours ?? 0;
+      const steps = rec.steps ?? 0;
+      const riskScore = Math.min(1, Math.max(0.05, (100 - energy) / 100 + (sleep < 5 ? 0.2 : 0)));
+      const isAnomaly = energy < 45 || sleep < 5 || steps < 4000;
+      const drivers: AnomalyDriver[] = [];
+      if (sleep < 5) drivers.push({ metric: 'sleep_hours', value: sleep, z_score: -2.1, direction: 'low' });
+      if (energy < 45) drivers.push({ metric: 'energy', value: energy, z_score: -1.8, direction: 'low' });
+      if (steps < 4000) drivers.push({ metric: 'steps', value: steps, z_score: -1.5, direction: 'low' });
+      return {
+        user_id: rec.user_id,
+        date: rec.date,
+        anomaly_score: parseFloat(riskScore.toFixed(2)),
+        is_anomaly: isAnomaly,
+        drivers,
+        narrative: isAnomaly
+          ? 'Multiple low-signal indicators detected. Recommend verification of sensor sync and recovery.'
+          : 'Signals within expected ranges.',
+      };
+    });
+}
+
+function buildDemoCorrelations(records: HealthRecord[]): CorrelationPair[] {
+  const sleep = records.map((r) => r.sleep_hours ?? 0);
+  const energy = records.map((r) => r.energy ?? 0);
+  const steps = records.map((r) => r.steps ?? 0);
+  const calories = records.map((r) => r.calories ?? 0);
+  const weight = records.map((r) => r.weight ?? 0);
+  return [
+    { metric_x: 'sleep_hours', metric_y: 'energy', correlation: computeCorrelation(sleep, energy) },
+    { metric_x: 'steps', metric_y: 'energy', correlation: computeCorrelation(steps, energy) },
+    { metric_x: 'calories', metric_y: 'weight', correlation: computeCorrelation(calories, weight) },
+    { metric_x: 'sleep_hours', metric_y: 'steps', correlation: computeCorrelation(sleep, steps) },
+  ];
+}
+
+function runDemoSimulation(records: HealthRecord[], mode: string): SimulationResult {
+  const modified = records.map((rec, idx) => {
+    if (idx % 5 !== 0) return rec;
+    if (mode === 'missing') return { ...rec, sleep_hours: undefined, steps: undefined };
+    if (mode === 'delay') return { ...rec, date: rec.date };
+    if (mode === 'spoof') return { ...rec, steps: (rec.steps ?? 0) * 2, calories: (rec.calories ?? 0) * 1.5 };
+    if (mode === 'noise') return { ...rec, energy: Math.max(20, Math.min(100, (rec.energy ?? 50) + (Math.random() - 0.5) * 40)) };
+    return rec;
+  });
+  const detected = buildDemoAnomalies(modified).filter((res) => res.is_anomaly);
+  return {
+    user_id: records[0]?.user_id ?? 'demo',
+    mode,
+    modified_records: modified,
+    detected_anomalies: detected,
+  };
+}
+
 // Helper to POST multiple records to the backend
 async function uploadRecords(records: HealthRecord[]): Promise<void> {
   for (const rec of records) {
@@ -169,48 +254,54 @@ export default function Home() {
     async function init() { 
       setLoading(true);
       let recs: HealthRecord[] = [];
-      try {
-        const res = await fetch(`${API_BASE_URL}/records/${userId}`);
-        if (res.ok) {
-          recs = await res.json();
+      if (!DEMO_MODE) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/records/${userId}`);
+          if (res.ok) {
+            recs = await res.json();
+          }
+        } catch (err) {
+          console.error(err);
         }
-      } catch (err) {
-        console.error(err);
       }
       if (!recs || recs.length === 0) {
         // No data; generate synthetic and upload
         const synthetic = generateHealthData(30);
-        await uploadRecords(synthetic);
+        if (!DEMO_MODE) {
+          await uploadRecords(synthetic);
+        }
         recs = synthetic.map((r, idx) => ({ ...r, id: idx + 1 }));
       }
       setHealthData(recs);
       // Fetch analytics
-      try {
-        const trustRes = await fetch(`${API_BASE_URL}/trust/${userId}`);
-        if (trustRes.ok) {
-          const trustJson = await trustRes.json();
-          setTrustScores(trustJson.scores);
+      if (!DEMO_MODE) {
+        try {
+          const trustRes = await fetch(`${API_BASE_URL}/trust/${userId}`);
+          if (trustRes.ok) {
+            const trustJson = await trustRes.json();
+            setTrustScores(trustJson.scores);
+          }
+        } catch (err) {
+          console.error(err);
         }
-      } catch (err) {
-        console.error(err);
-      }
-      try {
-        const anRes = await fetch(`${API_BASE_URL}/anomaly/${userId}`);
-        if (anRes.ok) {
-          const anJson = await anRes.json();
-          setAnomalyResults(anJson.results);
+        try {
+          const anRes = await fetch(`${API_BASE_URL}/anomaly/${userId}`);
+          if (anRes.ok) {
+            const anJson = await anRes.json();
+            setAnomalyResults(anJson.results);
+          }
+        } catch (err) {
+          console.error(err);
         }
-      } catch (err) {
-        console.error(err);
-      }
-      try {
-        const corrRes = await fetch(`${API_BASE_URL}/correlations/${userId}`);
-        if (corrRes.ok) {
-          const corrJson = await corrRes.json();
-          setCorrelations(corrJson.correlations);
+        try {
+          const corrRes = await fetch(`${API_BASE_URL}/correlations/${userId}`);
+          if (corrRes.ok) {
+            const corrJson = await corrRes.json();
+            setCorrelations(corrJson.correlations);
+          }
+        } catch (err) {
+          console.error(err);
         }
-      } catch (err) {
-        console.error(err);
       }
       setLoading(false);
     }
@@ -251,16 +342,22 @@ const trustDataForChart =
 
 
   // Prepare anomaly series for chart
-  const anomalySeries = anomalyResults.map((r) => ({ date: r.date, score: r.anomaly_score }));
+  const demoAnomalies = anomalyResults.length > 0 ? anomalyResults : buildDemoAnomalies(healthData);
+  const anomalySeries = demoAnomalies.map((r) => ({ date: r.date, score: r.anomaly_score }));
 
   // Prepare correlation matrix table rows
-  const corrRows = correlations.map((c) => ({
+  const corrSource = correlations.length > 0 ? correlations : buildDemoCorrelations(healthData);
+  const corrRows = corrSource.map((c) => ({
     pair: `${c.metric_x} / ${c.metric_y}`,
     value: c.correlation,
   }));
 
   // Simulation handler
   async function runSimulation() {
+    if (DEMO_MODE) {
+      setSimResult(runDemoSimulation(healthData, simMode));
+      return;
+    }
     setLoading(true);
     setSimResult(null);
     try {
@@ -353,15 +450,19 @@ const trustDataForChart =
                 <TrendingUp className="w-5 h-5 text-accent" />
                 30‑Day Health Metrics
               </h3>
-              <AreaChart data={healthData} width={500} height={300} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 10 }} />
-                <YAxis stroke="#94a3b8" />
-                <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} />
-                <Legend />
-                <Area type="monotone" dataKey="energy" stroke="#a855f7" fill="#a855f7" fillOpacity={0.3} name="Energy" />
-                <Area type="monotone" dataKey="sleep_hours" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} name="Sleep" />
-              </AreaChart>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={healthData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 10 }} />
+                    <YAxis stroke="#94a3b8" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} />
+                    <Legend />
+                    <Area type="monotone" dataKey="energy" stroke="#a855f7" fill="#a855f7" fillOpacity={0.3} name="Energy" />
+                    <Area type="monotone" dataKey="sleep_hours" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} name="Sleep" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
             {/* Radar Chart */}
             <div className="bg-panel rounded-xl p-6 border border-gray-700">
@@ -370,14 +471,18 @@ const trustDataForChart =
                 Today's Health Vector
               </h3>
               {radarData.length > 0 ? (
-                <RadarChart outerRadius={100} width={500} height={300} data={radarData}>
-                  <PolarGrid stroke="#475569" />
-                  <PolarAngleAxis dataKey="metric" stroke="#94a3b8" />
-                  <PolarRadiusAxis stroke="#94a3b8" />
-                  <Radar name="Current" dataKey="current" stroke="#a855f7" fill="#a855f7" fillOpacity={0.6} />
-                  <Radar name="Optimal" dataKey="optimal" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
-                  <Legend />
-                </RadarChart>
+                <div className="h-72 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart outerRadius={100} data={radarData}>
+                      <PolarGrid stroke="#475569" />
+                      <PolarAngleAxis dataKey="metric" stroke="#94a3b8" />
+                      <PolarRadiusAxis stroke="#94a3b8" />
+                      <Radar name="Current" dataKey="current" stroke="#a855f7" fill="#a855f7" fillOpacity={0.6} />
+                      <Radar name="Optimal" dataKey="optimal" stroke="#10b981" fill="#10b981" fillOpacity={0.3} />
+                      <Legend />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
               ) : (
                 <p className="text-gray-400">No data available.</p>
               )}
@@ -408,14 +513,18 @@ const trustDataForChart =
               <Lock className="w-5 h-5 text-success" /> Signal Trust Scores
             </h3>
             {trustDataForChart.length > 0 ? (
-               <BarChart width={700} height={300} data={trustDataForChart}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="metric" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" domain={[0, 1]} />
-                <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} />
-                <Legend />
-                <Bar dataKey="score" fill="#10b981" />
-              </BarChart>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={trustDataForChart}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="metric" stroke="#94a3b8" />
+                    <YAxis stroke="#94a3b8" domain={[0, 1]} />
+                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} />
+                    <Legend />
+                    <Bar dataKey="score" fill="#10b981" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
               <p className="text-gray-400">Trust scores unavailable.</p>
             )}
@@ -429,19 +538,23 @@ const trustDataForChart =
               <AlertTriangle className="w-5 h-5 text-danger" /> Anomaly Detection
             </h3>
             {anomalySeries.length > 0 ? (
-              <LineChart width={700} height={300} data={anomalySeries}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="date" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" />
-                <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} />
-                <Legend />
-                <Line type="monotone" dataKey="score" stroke="#ef4444" />
-              </LineChart>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={anomalySeries}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis dataKey="date" stroke="#94a3b8" />
+                    <YAxis stroke="#94a3b8" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569' }} />
+                    <Legend />
+                    <Line type="monotone" dataKey="score" stroke="#ef4444" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
               <p className="text-gray-400">No anomaly data available.</p>
             )}
             <div className="mt-4 space-y-2 max-h-60 overflow-y-auto pr-2">
-              {anomalyResults.map((res, idx) => (
+              {demoAnomalies.map((res, idx) => (
                 <div key={idx} className="border border-gray-700 rounded-lg p-3 hover:border-danger transition-colors">
                   <div className="flex justify-between items-center">
                     <span className="font-semibold text-accent">{res.date}</span>
