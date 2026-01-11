@@ -87,7 +87,7 @@ The platform can intentionally inject:
 
 resilience under hostile conditions — a core security concept.
 
-**🚨 Unified Observability Dashboard **
+**🚨 Unified Observability Dashboard**
 
 A security-style dashboard visualizes:
 
