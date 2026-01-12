@@ -1,7 +1,7 @@
 # SignalZero: Physio Threat Intelligence Engine
 
 [Design Doc](https://docs.google.com/document/d/1AY0WEyM2We4BQ3Y9mxXZIPS_7u6C-_lcTHyvLGck0b0/edit?usp=sharing)
-Demo 
+
 
 ## Zero-Trust Health Data Pipeline • AI-Driven Signal Integrity & Anomaly Detection
 
@@ -107,6 +107,12 @@ A security-style dashboard visualizes:
 - simulation results
 
 The UI is intentionally designed to resemble observability and threat-intelligence tooling, not a consumer fitness app.
+
+## **Demo** 
+
+
+https://github.com/user-attachments/assets/eaa4afe3-359d-4ea2-83df-360252dcd018
+
 
 
 ## Zero-Trust Security: 
