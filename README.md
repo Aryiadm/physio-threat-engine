@@ -113,7 +113,8 @@ The UI is intentionally designed to resemble observability and threat-intelligen
 
 https://github.com/user-attachments/assets/eaa4afe3-359d-4ea2-83df-360252dcd018
 
-
+**Slides**
+https://github.com/user-attachments/assets/3eb64bcc-8bad-466b-a046-8b7140e2ebf7
 
 ## Zero-Trust Security: 
 Privacy-first design with differential privacy guarantees and encrypted transmission
@@ -138,6 +139,8 @@ Cross‑signal analysis uncovering relationships between metrics and detecting i
 ## Adversarial Simulation
 Adversarial simulation mode that injects missing, delayed, spoofed or noisy data to test resilience
 <img width="1579" height="689" alt="Screenshot 2026-01-11 at 4 10 02 PM" src="https://github.com/user-attachments/assets/9165a0a0-04f4-4aaf-8b65-2c2b52d65904" />
+
+
 
 
 
